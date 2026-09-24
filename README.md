@@ -1,36 +1,48 @@
 # 🧠 GrayMatter
 
-> **A multi-agent AI research system that searches the web, reads relevant sources, generates structured research reports, and critiques the final output.**
+> **A multi-agent AI research system that searches the live web, reads relevant sources, generates structured research reports, and evaluates the generated output.**
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://www.python.org/)
-[![LangChain](https://img.shields.io/badge/LangChain-Agentic%20AI-green)](https://www.langchain.com/)
-[![OpenAI](https://img.shields.io/badge/LLM-OpenAI-black?logo=openai)](https://openai.com/)
-[![Tavily](https://img.shields.io/badge/Search-Tavily-orange)](https://tavily.com/)
-[![Streamlit](https://img.shields.io/badge/UI-Streamlit-red?logo=streamlit)](https://streamlit.io/)
+<p align="center">
+
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
+![LangChain](https://img.shields.io/badge/LangChain-Agentic%20AI-green)
+![OpenAI](https://img.shields.io/badge/LLM-OpenAI-black?logo=openai)
+![Tavily](https://img.shields.io/badge/Search-Tavily-orange)
+![Streamlit](https://img.shields.io/badge/UI-Streamlit-red?logo=streamlit)
+![BeautifulSoup](https://img.shields.io/badge/Web%20Scraping-BeautifulSoup-yellow)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+</p>
 
 ---
 
-## 🔎 What is GrayMatter?
+# 📌 Overview
 
-GrayMatter is a **multi-agent AI research system** inspired by modern deep-research workflows.
+**GrayMatter** is a multi-agent AI research system built with **Python, LangChain, OpenAI, Tavily, BeautifulSoup, Requests, and Streamlit**.
 
-Instead of asking a single LLM to answer a question from its existing knowledge, GrayMatter divides the research process into specialized components:
+The project is designed around a simple idea:
+
+> Instead of asking a single language model to answer a research question from its internal knowledge, divide the research workflow into specialized components and give different agents specific responsibilities.
+
+The system performs research in multiple stages:
 
 ```text
-User Topic
-    ↓
+User Research Topic
+        ↓
 Search Agent
-    ↓
-Find relevant web sources
-    ↓
+        ↓
+Live Web Search
+        ↓
 Reader Agent
-    ↓
-Extract useful information
-    ↓
+        ↓
+Web Page Extraction
+        ↓
+Research Context
+        ↓
 Writer Chain
-    ↓
-Generate structured report
-    ↓
+        ↓
+Structured Research Report
+        ↓
 Critic Chain
-    ↓
-Evaluate the report
+        ↓
+Report Evaluation
