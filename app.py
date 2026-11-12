@@ -1,11 +1,12 @@
 import streamlit as st
 import time
-from agents import build_reader_agent, build_search_agent, writer_chain, critic_chain
+import os
+from agents import build_reader_agent, build_search_agent, build_writer_chain, build_critic_chain, get_llm
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="ResearchMind · AI Research Agent",
-    page_icon="🔬",
+    page_title="GrayMatter · Autonomous Deep Research Platform",
+    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -64,7 +65,7 @@ html, body, [class*="css"] {
     font-size: 1.05rem;
     font-weight: 300;
     color: #a09890;
-    max-width: 520px;
+    max-width: 540px;
     margin: 0 auto;
     line-height: 1.65;
 }
@@ -290,6 +291,41 @@ details summary {
 """, unsafe_allow_html=True)
 
 
+# ── Sidebar Settings ──────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### ⚙️ Engine Settings")
+    st.markdown("<p style='font-size:0.8rem;color:#888;'>Configure LLM provider keys and parameters below.</p>", unsafe_allow_html=True)
+
+    env_openai_key = os.getenv("OPENAI_API_KEY", "")
+    openai_key_input = st.text_input(
+        "OpenAI API Key",
+        value=env_openai_key if env_openai_key else "",
+        type="password",
+        placeholder="sk-...",
+        help="Leave blank to use OPENAI_API_KEY from environment"
+    )
+
+    env_tavily_key = os.getenv("TAVILY_API_KEY", "")
+    tavily_key_input = st.text_input(
+        "Tavily Search API Key (Optional)",
+        value=env_tavily_key if env_tavily_key else "",
+        type="password",
+        placeholder="tvly-...",
+        help="If not provided, GrayMatter uses built-in fallback search"
+    )
+
+    model_choice = st.selectbox(
+        "Model Architecture",
+        options=["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
+        index=0
+    )
+
+    # Propagate active keys to environment
+    active_openai_key = openai_key_input.strip() if openai_key_input.strip() else env_openai_key
+    if tavily_key_input.strip():
+        os.environ["TAVILY_API_KEY"] = tavily_key_input.strip()
+
+
 # ── Helper: render a step card ────────────────────────────────────────────────
 def step_card(num: str, title: str, state: str, desc: str = ""):
     status_map = {
@@ -312,19 +348,18 @@ def step_card(num: str, title: str, state: str, desc: str = ""):
 
 
 # ── Session state init ────────────────────────────────────────────────────────
-for key in ("results", "running", "done"):
+for key in ("results", "running", "done", "error_msg"):
     if key not in st.session_state:
-        st.session_state[key] = {} if key == "results" else False
+        st.session_state[key] = {} if key == "results" else (None if key == "error_msg" else False)
 
 
 # ── Hero ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero">
-    <div class="hero-eyebrow">Multi-Agent AI System</div>
-    <h1>Research<span>Mind</span></h1>
+    <div class="hero-eyebrow">Autonomous Multi-Agent Deep Research Platform</div>
+    <h1>Gray<span>Matter</span></h1>
     <p class="hero-sub">
-        Four specialized AI agents collaborate — searching, scraping, writing,
-        and critiquing — to deliver a polished research report on any topic.
+        Specialized autonomous agents collaborate in an orchestrated loop — searching live feeds, extracting primary sources, synthesizing deep research reports, and rigorous evaluation.
     </p>
 </div>
 <div class="divider"></div>
@@ -338,7 +373,7 @@ with col_input:
     st.markdown('<div class="input-card">', unsafe_allow_html=True)
     topic = st.text_input(
         "Research Topic",
-        placeholder="e.g. Quantum computing breakthroughs in 2025",
+        placeholder="e.g. Breakthroughs in Neuromorphic Computing & Silicon Photonics",
         key="topic_input",
         label_visibility="visible",
     )
@@ -348,9 +383,9 @@ with col_input:
     # Example chips
     st.markdown("""
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem;">
-        <span style="font-family:'DM Mono',monospace;font-size:0.68rem;color:#605850;letter-spacing:0.1em;">TRY →</span>
+        <span style="font-family:'DM Mono',monospace;font-size:0.68rem;color:#605850;letter-spacing:0.1em;">EXPLORE →</span>
     """, unsafe_allow_html=True)
-    examples = ["LLM agents 2025", "CRISPR gene editing", "Fusion energy progress"]
+    examples = ["Autonomous Agent Architectures 2025", "High-Throughput Distributed Sockets in Java", "CRISPR-Cas9 Therapeutic Breakthroughs"]
     for ex in examples:
         st.markdown(f"""
         <span style="
@@ -367,7 +402,7 @@ with col_input:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_pipeline:
-    st.markdown('<div class="section-heading">Pipeline</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-heading">Pipeline Status</div>', unsafe_allow_html=True)
 
     r = st.session_state.results
     done = st.session_state.done
@@ -376,83 +411,91 @@ with col_pipeline:
         if not r:
             return "waiting"
         steps = ["search", "reader", "writer", "critic"]
-        idx = steps.index(step)
-        completed = list(r.keys())
-        # figure out which steps are done
         if step in r:
             return "done"
-        # which step is running now (first not in r)
         if st.session_state.running:
-            for i, k in enumerate(steps):
+            for k in steps:
                 if k not in r:
                     return "running" if k == step else "waiting"
         return "waiting"
 
-    step_card("01", "Search Agent",  s("search"), "Gathers recent web information")
-    step_card("02", "Reader Agent",  s("reader"), "Scrapes & extracts deep content")
-    step_card("03", "Writer Chain",  s("writer"), "Drafts the full research report")
-    step_card("04", "Critic Chain",  s("critic"), "Reviews & scores the report")
+    step_card("01", "Search Agent",  s("search"), "Orchestrates live multi-source web queries")
+    step_card("02", "Reader Agent",  s("reader"), "Scrapes & synthesizes in-depth body content")
+    step_card("03", "Writer Chain",  s("writer"), "Drafts the comprehensive research paper")
+    step_card("04", "Critic Chain",  s("critic"), "Evaluates analytical rigor & citations")
 
 
 # ── Run pipeline ──────────────────────────────────────────────────────────────
 if run_btn:
     if not topic.strip():
         st.warning("Please enter a research topic first.")
+    elif not active_openai_key:
+        st.error("OpenAI API Key is required. Please set OPENAI_API_KEY in your environment or enter it in the sidebar.")
     else:
         st.session_state.results = {}
         st.session_state.running = True
         st.session_state.done = False
+        st.session_state.error_msg = None
         st.rerun()
 
 if st.session_state.running and not st.session_state.done:
     results = {}
     topic_val = st.session_state.topic_input
 
-    # ── Step 1: Search ──
-    with st.spinner("🔍  Search Agent is working…"):
-        search_agent = build_search_agent()
-        sr = search_agent.invoke({
-            "messages": [("user", f"Find recent, reliable and detailed information about: {topic_val}")]
-        })
-        results["search"] = sr["messages"][-1].content
-        st.session_state.results = dict(results)
-    st.rerun() if False else None   # keep inline for now
+    try:
+        shared_llm = get_llm(api_key=active_openai_key, model=model_choice)
 
-    # ── Step 2: Reader ──
-    with st.spinner("📄  Reader Agent is scraping top resources…"):
-        reader_agent = build_reader_agent()
-        rr = reader_agent.invoke({
-            "messages": [("user",
-                f"Based on the following search results about '{topic_val}', "
-                f"pick the most relevant URL and scrape it for deeper content.\n\n"
-                f"Search Results:\n{results['search'][:800]}"
-            )]
-        })
-        results["reader"] = rr["messages"][-1].content
-        st.session_state.results = dict(results)
+        # ── Step 1: Search ──
+        with st.spinner("🔍 Search Agent is querying live web sources…"):
+            search_agent = build_search_agent(llm_instance=shared_llm)
+            sr = search_agent.invoke({
+                "messages": [("user", f"Find recent, reliable, and comprehensive technical information about: {topic_val}")]
+            })
+            results["search"] = sr["messages"][-1].content
+            st.session_state.results = dict(results)
 
-    # ── Step 3: Writer ──
-    with st.spinner("✍️  Writer is drafting the report…"):
-        research_combined = (
-            f"SEARCH RESULTS:\n{results['search']}\n\n"
-            f"DETAILED SCRAPED CONTENT:\n{results['reader']}"
-        )
-        results["writer"] = writer_chain.invoke({
-            "topic": topic_val,
-            "research": research_combined
-        })
-        st.session_state.results = dict(results)
+        # ── Step 2: Reader ──
+        with st.spinner("📄 Reader Agent is extracting key source documents…"):
+            reader_agent = build_reader_agent(llm_instance=shared_llm)
+            rr = reader_agent.invoke({
+                "messages": [("user",
+                    f"Based on the following search results about '{topic_val}', "
+                    f"extract the most credible URL and scrape its content for detailed facts.\\n\\n"
+                    f"Search Results:\\n{results['search'][:1000]}"
+                )]
+            })
+            results["reader"] = rr["messages"][-1].content
+            st.session_state.results = dict(results)
 
-    # ── Step 4: Critic ──
-    with st.spinner("🧐  Critic is reviewing the report…"):
-        results["critic"] = critic_chain.invoke({
-            "report": results["writer"]
-        })
-        st.session_state.results = dict(results)
+        # ── Step 3: Writer ──
+        with st.spinner("✍️ Writer Chain is drafting the comprehensive research report…"):
+            writer = build_writer_chain(llm_instance=shared_llm)
+            research_combined = (
+                f"SEARCH RESULTS:\\n{results['search']}\\n\\n"
+                f"DETAILED SCRAPED CONTENT:\\n{results['reader']}"
+            )
+            results["writer"] = writer.invoke({
+                "topic": topic_val,
+                "research": research_combined
+            })
+            st.session_state.results = dict(results)
 
-    st.session_state.running = False
-    st.session_state.done = True
-    st.rerun()
+        # ── Step 4: Critic ──
+        with st.spinner("🧐 Critic Chain is evaluating report quality and rigor…"):
+            critic = build_critic_chain(llm_instance=shared_llm)
+            results["critic"] = critic.invoke({
+                "report": results["writer"]
+            })
+            st.session_state.results = dict(results)
+
+        st.session_state.running = False
+        st.session_state.done = True
+        st.rerun()
+
+    except Exception as e:
+        st.session_state.running = False
+        st.session_state.error_msg = str(e)
+        st.error(f"Pipeline execution encountered an error: {e}")
 
 
 # ── Results display ───────────────────────────────────────────────────────────
@@ -460,33 +503,32 @@ r = st.session_state.results
 
 if r:
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-heading">Results</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-heading">Research Intelligence Output</div>', unsafe_allow_html=True)
 
     # Raw outputs in expanders
     if "search" in r:
-        with st.expander("🔍 Search Results (raw)", expanded=False):
-            st.markdown(f'<div class="result-panel"><div class="result-panel-title">Search Agent Output</div>'
+        with st.expander("🔍 Intermediate Search Agent Output", expanded=False):
+            st.markdown(f'<div class="result-panel"><div class="result-panel-title">Search Agent Discovery</div>'
                         f'<div class="result-content">{r["search"]}</div></div>', unsafe_allow_html=True)
 
     if "reader" in r:
-        with st.expander("📄 Scraped Content (raw)", expanded=False):
-            st.markdown(f'<div class="result-panel"><div class="result-panel-title">Reader Agent Output</div>'
+        with st.expander("📄 Primary Document Extraction Output", expanded=False):
+            st.markdown(f'<div class="result-panel"><div class="result-panel-title">Reader Agent Extraction</div>'
                         f'<div class="result-content">{r["reader"]}</div></div>', unsafe_allow_html=True)
 
     # Final report
     if "writer" in r:
         st.markdown("""
         <div class="report-panel">
-            <div class="panel-label orange">📝 Final Research Report</div>
+            <div class="panel-label orange">📝 Synthesized Research Report</div>
         """, unsafe_allow_html=True)
-        st.markdown(r["writer"])   # render markdown natively
+        st.markdown(r["writer"])
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Download
         st.download_button(
-            label="⬇  Download Report (.md)",
+            label="⬇  Export Full Report (.md)",
             data=r["writer"],
-            file_name=f"research_report_{int(time.time())}.md",
+            file_name=f"graymatter_report_{int(time.time())}.md",
             mime="text/markdown",
         )
 
@@ -494,7 +536,7 @@ if r:
     if "critic" in r:
         st.markdown("""
         <div class="feedback-panel">
-            <div class="panel-label green">🧐 Critic Feedback</div>
+            <div class="panel-label green">🧐 Critic Chain Evaluation & Score</div>
         """, unsafe_allow_html=True)
         st.markdown(r["critic"])
         st.markdown("</div>", unsafe_allow_html=True)
@@ -503,6 +545,6 @@ if r:
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="notice">
-    ResearchMind · Powered by LangChain multi-agent pipeline · Built with Streamlit
+    GrayMatter · Autonomous Multi-Agent Deep Research Platform · Built with LangChain & Streamlit
 </div>
 """, unsafe_allow_html=True)
